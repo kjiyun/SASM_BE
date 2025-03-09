@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
-from .selectors import CurationSelector, CuratedStoryCoordinatorSelector
+from .selectors import CurationSelector, CuratedStoryCoordinatorSelector, TotalSearchSelector
 from .services import CurationCoordinatorService, CurationLikeService
 from .permissions import IsWriter, IsVerifiedOrSdpAdmin
 from curations.models import Curation
@@ -40,12 +40,14 @@ class CurationListApi(APIView):
 
     class CurationListFilterSerializer(serializers.Serializer):
         search = serializers.CharField(required=False)
+        order = serializers.CharField(required=False)
 
     class CurationListOutputSerializer(serializers.Serializer):
         id = serializers.IntegerField()
         title = serializers.CharField()
         rep_pic = serializers.CharField()
         writer_email = serializers.CharField()
+        nickname = serializers.CharField()
         is_selected = serializers.BooleanField()
 
     @swagger_auto_schema(
@@ -54,6 +56,7 @@ class CurationListApi(APIView):
         operation_description='''
             큐레이션의 검색 결과를 리스트합니다.<br/>
             search(검색어)의 default값은 ''로, 검색어가 없을 시 모든 큐레이션이 반환됩니다.
+            order(정렬)은 latest 또는 oldest로 최신순 정렬 여부를 결정합니다.
             반환되는 정보는 대표/관리자/인증유저 큐레이션 <b>모두보기 레이아웃</b>에서 볼 수 있는 것과 같습니다.
             ''',
         responses={
@@ -65,6 +68,7 @@ class CurationListApi(APIView):
                         'title': '서울 비건카페 탑5',
                         'rep_pic': 'https://abc.com/1.jpg',
                         'writer_email': 'sdptech@gmail.com',
+                        'nickname':'sdpygl',
                         'is_selected': True,
                     }
                 }
@@ -82,7 +86,8 @@ class CurationListApi(APIView):
         filters = filters_serializer.validated_data
 
         curations = CurationSelector.list(
-            search=filters.get('search', '')
+            search=filters.get('search', ''),
+            order = filters.get('order', '')
         )
 
         return get_paginated_response(
@@ -111,9 +116,8 @@ class RepCurationListApi(APIView):
     @swagger_auto_schema(
         operation_id='대표큐레이션 리스트',
         operation_description='''
-            홈 화면과 모두보기 화면의 대표큐레이션을 리스트합니다.<br/>
+            홈 화면과 모두보기 화면의 대표큐레이션을 리스트합니다. 쿼리 파라미터 : 없음 <br/>
             대표큐레이션이 모두 반환되며, 이 중에서 is_selected=True인 것만 홈 화면에 노출되어야 합니다.<br/>
-            Request시 전달해야 할 파라미터는 없습니다.
             ''',
         responses={
             "200": openapi.Response(
@@ -152,19 +156,22 @@ class AdminCurationListApi(APIView):
         page_size = 4
         page_size_query_param = 'page_size'
 
+    class AdminCurationListFilterSerializer(serializers.Serializer):
+        search = serializers.CharField(required=False)
+
     class AdminCurationListOutputSerializer(serializers.Serializer):
         id = serializers.IntegerField()
         title = serializers.CharField()
         rep_pic = serializers.CharField()
         writer_email = serializers.CharField()
+        nickname=serializers.CharField()
         is_selected = serializers.BooleanField()
 
     @swagger_auto_schema(
         operation_id='관리자 큐레이션 리스트',
         operation_description='''
-            홈 화면과 모두보기 화면의 관리자 큐레이션을 리스트합니다.<br/>
-            관리자 큐레이션이 모두 반환되며, 이 중에서 is_selected=True인 것만 홈 화면에 노출되어야 합니다.<br/>
-            Request시 전달해야 할 파라미터는 없습니다.
+            홈 화면과 모두보기 화면의 관리자 큐레이션을 리스트합니다. 쿼리 파라미터 : search <br/>
+            search(검색어)의 default값은 ''로, 검색어가 없을 시 모든 관리자 큐레이션이 반환됩니다.<br/>
             ''',
         responses={
             "200": openapi.Response(
@@ -175,6 +182,7 @@ class AdminCurationListApi(APIView):
                         'title': '제로웨이스트',
                         'rep_pic': 'https://abc.com/1.jpg',
                         'writer_email': 'sdptech@gmail.com',
+                        'nickname':'sdpygl',
                         'is_selected': True,
                     }
                 }
@@ -185,7 +193,15 @@ class AdminCurationListApi(APIView):
         },
     )
     def get(self, request):
-        curations = CurationSelector.admin_curation_list(self)
+        filters_serializer = self.AdminCurationListFilterSerializer(
+            data=request.query_params
+        )
+        filters_serializer.is_valid(raise_exception=True)
+        filters = filters_serializer.validated_data
+
+        curations = CurationSelector.admin_curation_list(
+            search=filters.get('search', '')
+        )
 
         return get_paginated_response(
             pagination_class=self.Pagination,
@@ -208,14 +224,17 @@ class VerifiedUserCurationListApi(APIView):
         title = serializers.CharField()
         rep_pic = serializers.CharField()
         writer_email = serializers.CharField()
+        nickname=serializers.CharField()
         is_selected = serializers.BooleanField()
+
+    class VerifiedUserCurationListFilterSerializer(serializers.Serializer):
+        search = serializers.CharField(required=False)
 
     @swagger_auto_schema(
         operation_id='인증유저 큐레이션 리스트',
         operation_description='''
-            홈 화면과 모두보기 화면의 인증유저 큐레이션을 리스트합니다.<br/>
-            인증유저 큐레이션이 모두 반환되며, 이 중에서 is_selected=True인 것만 홈 화면에 노출되어야 합니다.<br/>
-            Request시 전달해야 할 파라미터는 없습니다.
+            홈 화면과 모두보기 화면의 인증유저 큐레이션을 리스트합니다. 쿼리 파라미터 : search <br/>
+            search(검색어)의 default값은 ''로, 검색어가 없을 시 모든 인증유저 큐레이션이 반환됩니다.<br/>
             ''',
         responses={
             "200": openapi.Response(
@@ -226,6 +245,7 @@ class VerifiedUserCurationListApi(APIView):
                         'title': '제로웨이스트',
                         'rep_pic': 'https://abc.com/1.jpg',
                         'writer_email': 'sdptech@gmail.com',
+                        'nickname':'sdpygl',
                         'is_selected': True,
                     }
                 }
@@ -236,7 +256,15 @@ class VerifiedUserCurationListApi(APIView):
         },
     )
     def get(self, request):
-        curations = CurationSelector.verified_user_curation_list(self)
+        filters_serializer = self.VerifiedUserCurationListFilterSerializer(
+            data=request.query_params
+        )
+        filters_serializer.is_valid(raise_exception=True)
+        filters = filters_serializer.validated_data
+
+        curations = CurationSelector.verified_user_curation_list(
+            search=filters.get('search', '')
+        )
 
         return get_paginated_response(
             pagination_class=self.Pagination,
@@ -260,13 +288,15 @@ class CurationDetailApi(APIView):
         profile_image = serializers.CharField()
         writer_is_verified = serializers.BooleanField()
         created = serializers.CharField()
+        updated = serializers.CharField()
         map_image = serializers.CharField()
         writer_is_followed = serializers.BooleanField()
+        like_cnt = serializers.IntegerField()
 
     @swagger_auto_schema(
         operation_id='큐레이션 디테일 조회',
         operation_description='''
-            큐레이션 디테일을 조회합니다.<br/>
+            큐레이션 디테일을 조회합니다. 쿼리 파라미터 : 없음 <br/>
             큐레이션 상세페이지 상단에 해당하는, 스토리를 제외한 큐레이션의 기본 정보를 반환합니다.
         ''',
         responses={
@@ -282,8 +312,11 @@ class CurationDetailApi(APIView):
                         'nickname': '스드프',
                         'profile_image': 'https://abc.com/1.jpg',
                         'writer_is_verified': True,
+                        'created' : "2023-08-20 10:59:09.765298+00:00",
+                        "updated": "2023-08-20 11:40:18.412855+00:00",
                         'map_image': 'https://abc.com/1.jpg',
-                        'writer_is_followed': True
+                        'writer_is_followed': True,
+                        'liked_cnt' : 0,
                     },
                 }
             ),
@@ -318,18 +351,18 @@ class CuratedStoryDetailApi(APIView):
         like_story = serializers.BooleanField()
         hashtags = serializers.CharField()
         rep_photos = serializers.ListField(required=False)
+        rep_pic = serializers.CharField()
 
         writer_email = serializers.CharField()
         nickname = serializers.CharField()
         profile_image = serializers.CharField()
         created = serializers.CharField()
         writer_is_followed = serializers.BooleanField()
-        
 
     @swagger_auto_schema(
         operation_id='큐레이션 스토리 디테일 조회',
         operation_description='''
-            큐레이션 내 스토리 정보를 반환합니다.<br/>
+            큐레이션 내 스토리 정보를 반환합니다. 쿼리 파라미터 : 없음 <br/>
         ''',
         responses={
             "200": openapi.Response(
@@ -348,7 +381,8 @@ class CuratedStoryDetailApi(APIView):
                         'writer_email': 'sdp.tech@gmail.com',
                         'nickname': '스드프',
                         'profile_image': 'https://abc.com/1.jpg',
-                        'created': '2022-08-24T14:15:22Z'
+                        'created': '2022-08-24T14:15:22Z',
+                        'rep_pic': 'https://sasm-bucket.s3.amazonaws.com/media/stories/img/pic01.jpg',
                     },
                 }
             ),
@@ -606,3 +640,90 @@ class CurationLikeApi(APIView):
             'status': 'success',
             'data': {'likes': likes},
         }, status=status.HTTP_200_OK)
+    
+class TotalSearchApi(APIView):
+    permission_classes=(AllowAny, )
+
+    class TotalSearchFilterSerializer(serializers.Serializer):
+        search = serializers.CharField(required=False)
+        order = serializers.CharField(required=False)
+
+    class TotalSearchOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        model = serializers.CharField()
+        title = serializers.CharField()
+        #content는 curation에서는 content를, forest에서는 subtitle을, story에서는 preview를 의미한다.
+        content = serializers.CharField()
+        #like_cnt는 curation, forest의 like_cnt를, place의 place_like_cnt, story의 story_like_cnt를 의미
+        like_cnt = serializers.IntegerField()
+        writer_is_followed = serializers.BooleanField()
+        created = serializers.CharField()
+        rep_pic = serializers.CharField()
+        nickname = serializers.CharField()
+        user_likes=serializers.BooleanField()
+
+    @swagger_auto_schema(
+        query_serializer=TotalSearchFilterSerializer,
+        operation_id='통합 검색 결과 리스트',
+        operation_description='''
+            통합 검색 결과를 리스트합니다.(각 모델마다 객체의 수 또한 리턴합니다.)</br>
+            search(검색어)의 default값은 ''로, 검색어가 없을 시 아무것도 반환되지 않습니다.
+            order(정렬)은 latest 또는 oldest로 최신순 정렬 여루블 결정합니다.
+            반환되는 정보는</br>
+            1. id </br>
+            2. model(ex. Curation, Forest, Story) </br>
+            3. title </br>
+            4. content (curation: content, forest: subtitle, story: preview) </br>
+            5. 좋아요 수 like_cnt(curation, forest: like_cnt, story: story_like_cnt) </br>
+            6. 작성자 팔로우 여부 writer_is_followed </br>
+            7. 생성일자 created </br>
+            8. 대표사진 rep_pic </br>
+            9. 작성자 nickname </br>
+            10. 유저 좋아요 여부 user_likes
+
+            ''',
+        responses={
+            "200": openapi.Response(
+                description="OK",
+                examples={
+                    "application/json":{
+
+                        'id':1,
+                        'model': 'Curation',
+                        'title': '서울 비건카페',
+                        'content': '서울 비건카페 5곳을 소개합니다',
+                        'like_cnt': 0,
+                        'writer_is_followed': True,
+                        'created': "2023-08-20 10:59:09.765298+00:00",
+                        'rep_pic': 'https://abc.com/1.jpg',
+                        'nickname': '스드프',
+                        'user_likes': True,
+                    }
+                }
+            ),
+            "400":openapi.Response(
+                description="Bad Request",
+            ),
+        }
+    )
+
+    def get(self,request):
+        filters_serializer = self.TotalSearchFilterSerializer(
+            data = request.query_params
+        )
+        filters_serializer.is_valid(raise_exception=True)
+        filters = filters_serializer.validated_data
+
+        results = TotalSearchSelector.list(
+            search=filters.get('search', ''),
+            order = filters.get('order', ''),
+            user=request.user
+        )
+
+        return Response({
+            'status': 'success',
+            'curation_count':results['curation_count'],
+            'forest_count':results['forest_count'],
+            'story_count':results['story_count'],
+            'data': results['result_data'],
+        }, status= status.HTTP_200_OK)

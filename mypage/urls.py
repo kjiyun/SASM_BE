@@ -2,6 +2,10 @@ from django.urls import path
 from .views import places_view, stories_views, user_following, curations_views, user_info_views, forest_views
 
 urlpatterns = [
+     path('user/',user_info_views.OtherUserGetApi.as_view(),name='other_user_info'),
+     path('user/other_curation/', curations_views.OtherCurationListApi.as_view(),name='other_curtaion'),
+     path('user/other_forest/', forest_views.OtherUserCreateForestApi.as_view(),name='other_forest'),
+     path('user/other_story/', stories_views.OtherCreatedStoryApi.as_view(),name='other_story'),
      path('follow/', user_following.UserDoUndoFollowApi.as_view(),
           name='user_do_undo_follow'),
      path('following/', user_following.UserFollowingListApi.as_view(),
@@ -28,6 +32,9 @@ urlpatterns = [
      path('me/update/', user_info_views.UserUpdateApi.as_view(), name='me_update'),
      path('my_reviewed_place/',places_view.UserReviewedPlaceGetApi.as_view(),
           name='user_reviewed_place'),
+     path('other_reviewed_place/',places_view.OtherUserReviewedPlaceGetApi.as_view(),
+          name='other_reviewed_place'),
      path('withdraw/', user_info_views.UserWithdrawApi.as_view(), name='withdraw'),
      path('myplace_search/',places_view.MyPlaceSearchApi.as_view(), name = 'myplace_search')
+     
 ]

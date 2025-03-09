@@ -11,10 +11,11 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
 from core.views import get_paginated_response
-from .services import ForestCoordinatorService, ForestPhotoService, ForestService, ForestCommentService
-from .selectors import ForestSelector, CategorySelector, ForestCommentSelector
+from .services import ForestCoordinatorService, ForestPhotoService, ForestService, ForestCommentService, ForestUserCategoryService
+from .selectors import ForestSelector, CategorySelector, ForestCommentSelector, ForestUserCategorySelector
 from .permissions import IsWriter
 from .models import Forest, ForestComment
+from users.serializers import UserSerializer
 
 
 class ForestCreateApi(APIView):
@@ -290,7 +291,7 @@ class ForestDetailApi(APIView):
     @swagger_auto_schema(
         operation_id='포레스트 글 디테일 조회',
         operation_description='''
-            전달된 id에 해당하는 포레스트 글 디테일을 조회합니다.<br/>
+            전달된 id에 해당하는 포레스트 글 디테일을 조회합니다. 쿼리 파라미터 : 없음 <br/>
             photos 배열 중 0번째 원소가 대표 이미지(rep_pic)입니다.<br/>
         ''',
         responses={
@@ -382,14 +383,14 @@ class ForestListApi(APIView):
         query_serializer=ForestListFilterSerializer,
         operation_id='포레스트 글 리스트',
         operation_description='''
-            전달된 쿼리 파라미터에 부합하는 포레스트 글 리스트를 반환합니다.<br/>
+            전달된 쿼리 파라미터에 부합하는 포레스트 글 리스트를 반환합니다. 쿼리 파라미터 : search, order, category_filter, semi_category_filter, writer_filter <br/>
             photos 배열 중 0번째 원소가 대표 이미지(rep_pic)입니다.<br/>
             <br/>
             search : title, subtitle, content 내 검색어<br/>
             order : 정렬 기준(latest, hot)<br/>
             category_filter: 카테고리 id <br/>
             semi_category_filter: 세미 카테고리 id 리스트 <br/>
-            writer_filter: 작성자 email <br/>
+            writer_filter: 작성자 email <br/>  
         ''',
         responses={
             "200": openapi.Response(
@@ -481,7 +482,7 @@ class CategoryListApi(APIView):
     @swagger_auto_schema(
         operation_id='카테고리 리스트',
         operation_description='''
-            사용 가능한 카테고리 리스트를 반환합니다.<br/>
+            사용 가능한 카테고리 리스트를 반환합니다. 쿼리 파라미터 : 없음 <br/>
         ''',
         responses={
             "200": openapi.Response(
@@ -528,7 +529,7 @@ class SemiCategoryListApi(APIView):
         query_serializer=SemiCategoryListFilterSerializer,
         operation_id='세미 카테고리 리스트',
         operation_description='''
-            사용 가능한 세미 카테고리 리스트를 반환합니다.<br/>
+            사용 가능한 세미 카테고리 리스트를 반환합니다. 쿼리 파라미터 : category <br/>
         ''',
         responses={
             "200": openapi.Response(
@@ -582,7 +583,7 @@ class ForestCommentListApi(APIView):
     @swagger_auto_schema(
         operation_id='포레스트 글 댓글 조회',
         operation_description='''
-            해당 포레스트 글의 하위 댓글을 조회합니다.<br/>
+            해당 포레스트 글의 하위 댓글을 조회합니다. 쿼리 파라미터 : 없음 <br/>
         ''',
         responses={
             "200": openapi.Response(
@@ -849,3 +850,107 @@ class ForestReportApi(APIView):
         return Response({
             'status': 'success',
         }, status=status.HTTP_201_CREATED)
+    
+
+class ForestUserCategorySaveApi(APIView):
+    permission_classes = (IsAuthenticated, )
+
+
+    class ForestUserCategoryInputSerializer(serializers.Serializer):
+        semi_categories = serializers.ListField()
+
+        class Meta:
+            examples ={
+                'semi_categories' : ['1','2','3']
+            }
+
+    @swagger_auto_schema(
+        request_body=ForestUserCategoryInputSerializer,
+        operation_id='나만의 카테고리 저장',
+        operation_description='''
+            전달된 세미카테고리 id 값을 기반으로 유저가 선택한 나만의 카테고리 id 리스트를 저장합니다.
+            ''',
+        responses={
+            "200": openapi.Response(
+                description="OK",
+                examples={
+                    "application/json":{
+                        "status": 'success',
+                        "id": 1,
+                        "gender": "male",
+                        "nickname": "sdpofficial",
+                        "birthdate": "2000.03.12",
+                        "email": "sdptech@gmail.com",
+                        "address": "서대문구 연세로",
+                        "profile_image": "https://abc.com/1.jpg",
+                        "is_sdp_admin": 'true',
+                        "is_verified": 'false',
+                        "introduction": "안녕하세요",
+                        'semi_categories': ['1','2','3']
+                    }
+                }
+            ),
+            "400": openapi.Response(
+                description="Bad Request",
+            ),
+        },
+    )
+    def post(self, request):
+         serializer = self.ForestUserCategoryInputSerializer(data = request.data, partial=True)
+         serializer.is_valid(raise_exception=True)
+         data = serializer.validated_data
+
+         service = ForestUserCategoryService(user=request.user)
+
+         semi_category = service.save_usercategory(
+             semi_categories=data.get('semi_categories', None),
+         )
+
+         user_serializer = UserSerializer(semi_category)
+
+         return Response({
+             'status':'success',
+             'data' :  user_serializer.data
+
+         },status=status.HTTP_200_OK)
+    
+class ForestUserCategoryGetApi(APIView):
+    class Pagination(PageNumberPagination):
+        page_size = 10
+        page_size_query_param = 'page_size'
+
+    class ForestUserCategoryOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        name = serializers.CharField()
+
+    @swagger_auto_schema(
+        operation_id='나만의 카테고리 리스트 불러오기',
+        operation_description = '''
+            사용자가 선택한 세미 카테고리 리스트를 반환합니다.
+        ''',
+        responses={
+            "200": openapi.Response(
+                description="OK",
+                examples={
+                    "application/json":{
+                        'id': 1,
+                        'name': '테크놀로지',
+                    },
+                }
+            ),
+            "400": openapi.Response(
+                description="Bad Request",
+            ),
+        },
+    )
+    def get(self, request):
+        selector = ForestUserCategorySelector(user = request.user)
+        semi_categories = selector.list()
+    
+        return get_paginated_response(
+                pagination_class=self.Pagination,
+                serializer_class=self.ForestUserCategoryOutputSerializer,
+                queryset=semi_categories,
+                request=request,
+                view=self
+            )
